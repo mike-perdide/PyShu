@@ -1,9 +1,10 @@
 import pickle
-from pyshu import snd_record, process_fft, graph_side_to_side, graph_one
+from pyshu import snd_record, process_fft, graph_side_to_side, graph_one, FFT_STEP, RATE
 from pylab import *
 from sklearn.cluster import KMeans
 from sklearn.svm import SVC
 from IPython import embed
+
 
 def fit_model(fft_data):
     model = KMeans(k=20)
@@ -67,6 +68,42 @@ def center_and_expand(_array, new_length):
 
     return new_array
 
+SIGNIFIANT_LEAP = int(0.25 * RATE/FFT_STEP)
+
+def detect_word_edges(ambiant_noises_groups, fft_data):
+    edges = []
+    start = 0
+
+    len_data = len(fft_data)
+    print "len_data", len_data
+    print "SIGNIFIANT_LEAP", SIGNIFIANT_LEAP
+
+    ambiant_noises_groups = [0]
+
+
+    logfile = open("logfile", "w")
+    for i in xrange(len_data - SIGNIFIANT_LEAP):
+        ambiant_count = 0
+        for group in ambiant_noises_groups:
+            group_count = bincount(fft_data[i:i+SIGNIFIANT_LEAP])
+            if group < len(group_count):
+                ambiant_count += group_count[group]
+
+        logfile.write("[%d:%d] count: %d\n" % (i, i+SIGNIFIANT_LEAP, ambiant_count))
+
+        if not start and ambiant_count < 0.1 * SIGNIFIANT_LEAP:
+            # This isn't ambiant noise
+            # We haven't recorded the start of the word yet
+            start = i
+        elif start and ambiant_count > 0.9 * SIGNIFIANT_LEAP:
+            edges.append((start, i))
+            start = 0
+    logfile.close()
+
+    print edges
+    print len(edges)
+    return edges
+
 
 if __name__ == "__main__":
 
@@ -88,19 +125,39 @@ if __name__ == "__main__":
             np.save(handle, (fft_model, all_records, all_ffts))
 
 #    embed()
-    len_models_ambiant = len(fft_model.labels_) * len(fft_ambiant)/len(concatenate(all_ffts))
+    len_models_ambiant = len(fft_model.labels_) * \
+                         len(fft_ambiant)/len(concatenate(all_ffts))
     values_to_zero_out = unique(fft_model.labels_[:len_models_ambiant])
-    labels = replace(fft_model.labels_, values_to_zero_out)
 
+#    print unique(fft_model.labels_[:len_models_ambiant])
+#    print bincount(fft_model.labels_[:len_models_ambiant])
+
+    labels = replace(fft_model.labels_, values_to_zero_out)
 #    graph_side_to_side(concatenate(all_records), labels)
 #    graph_one(labels)
 #    graph_one(ten_sec_r2)
 
-    #graph_one(labels)
-    limits = {"R2": [(1264, 1464), (1550, 1750), (1854, 1976), (2138, 2277),
-                     (2456, 2655), (2773, 2940), (3055, 3215)],
-              "open": [(3356, 3599), (3708, 3894), (4041, 4224), (4393, 4618),
-                       (4723, 4947), (5066, 5284)]}
+#    HARDCODED EDGES
+#    limits = {"R2": [(1264, 1464), (1550, 1750), (1854, 1976), (2138, 2277),
+#                     (2456, 2655), (2773, 2940), (3055, 3215)],
+#              "open": [(3356, 3599), (3708, 3894), (4041, 4224), (4393, 4618),
+#                       (4723, 4947), (5066, 5284)]}
+
+    edges = detect_word_edges(values_to_zero_out, labels)
+
+    print limits
+    plt.plot(labels, '|')
+
+    starts = []
+    ends = []
+    for start, end in edges:
+        starts.append(start)
+        ends.append(end)
+
+    plt.plot(array(starts), r_[[15] * len(edges)], 'gx')
+    plt.plot(array(ends), r_[[15] * len(edges)], 'rx')
+    plt.show()
+
 
 #    for 
 
