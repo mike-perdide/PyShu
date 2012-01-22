@@ -71,17 +71,14 @@ def center_and_expand(_array, new_length):
 SIGNIFIANT_LEAP = int(0.25 * RATE/FFT_STEP)
 
 def detect_word_edges(ambiant_noises_groups, fft_data, offset):
+    # Other way to detect edges : we should try unsupervised learning with 2
+    # groups.
     edges = []
     start = 0
 
     len_data = len(fft_data)
-    print "len_data", len_data
-#    print "SIGNIFIANT_LEAP", SIGNIFIANT_LEAP
 
-    ambiant_noises_groups = [0]
-
-
-    logfile = open("logfile", "w")
+#    logfile = open("logfile", "w")
     for i in xrange(len_data - SIGNIFIANT_LEAP):
         ambiant_count = 0
         for group in ambiant_noises_groups:
@@ -89,7 +86,9 @@ def detect_word_edges(ambiant_noises_groups, fft_data, offset):
             if group < len(group_count):
                 ambiant_count += group_count[group]
 
-        logfile.write("[%d:%d] count: %d\n" % (offset + i, offset + i+SIGNIFIANT_LEAP, ambiant_count))
+#        logfile.write("[%d:%d] count: %d\n" % (offset + i,
+#                                               offset + i+SIGNIFIANT_LEAP,
+#                                               ambiant_count))
 
         if not start and ambiant_count < 0.1 * SIGNIFIANT_LEAP:
             # This isn't ambiant noise
@@ -98,10 +97,8 @@ def detect_word_edges(ambiant_noises_groups, fft_data, offset):
         elif start and ambiant_count > 0.9 * SIGNIFIANT_LEAP:
             edges.append((start, i + offset))
             start = 0
-    logfile.close()
+#    logfile.close()
 
-#    print edges
-#    print len(edges)
     return edges
 
 
@@ -143,23 +140,26 @@ if __name__ == "__main__":
 #    graph_one(ten_sec_r2)
 
 #    HARDCODED EDGES
-    limits = {"R2": [(1264, 1464), (1550, 1750), (1854, 1976), (2138, 2277),
-                     (2456, 2655), (2773, 2940), (3055, 3215)],
-              "open": [(3356, 3599), (3708, 3894), (4041, 4224), (4393, 4618),
-                       (4723, 4947), (5066, 5284)]}
+#    limits = {"R2": [(1264, 1464), (1550, 1750), (1854, 1976), (2138, 2277),
+#                     (2456, 2655), (2773, 2940), (3055, 3215)],
+#              "open": [(3356, 3599), (3708, 3894), (4041, 4224), (4393, 4618),
+#                       (4723, 4947), (5066, 5284)]}
 
     # R2 edges detection
-    r2_edges = detect_word_edges(values_to_zero_out,
-                                 labels[len_models_ambiant:len_models_ambiant + len_models_R2],
-                                 offset=len_models_ambiant)
-    open_edges = detect_word_edges(values_to_zero_out,
-                                   labels[len_models_R2+len_models_ambiant:len_models_R2+len_models_ambiant+len_models_open],
-                                   offset=len_models_R2+len_models_ambiant)
+    r2_edges = detect_word_edges(
+        values_to_zero_out,
+        labels[len_models_ambiant:len_models_ambiant + len_models_R2],
+        offset=len_models_ambiant)
+    open_edges = detect_word_edges(
+        values_to_zero_out,
+        labels[len_models_R2 + len_models_ambiant:
+               len_models_R2 + len_models_ambiant + len_models_open],
+        offset=len_models_R2+len_models_ambiant)
 
-    print r2_edges
-    print limits["R2"]
-    print open_edges
-    print limits["open"]
+#    print r2_edges
+#    print limits["R2"]
+#    print open_edges
+#    print limits["open"]
 
     edges = {"R2": r2_edges, "open": open_edges}
     plt.plot(labels, '|')
@@ -173,28 +173,6 @@ if __name__ == "__main__":
 #    plt.plot(array(starts), r_[[15] * len(edges)], 'gx')
 #    plt.plot(array(ends), r_[[15] * len(edges)], 'rx')
 #    plt.show()
-
-
-#    for 
-
-#    while True:
-#        word = "R2"
-#        start = raw_input("Enter start (number of s) of 'R2' or enter 'X' to"
-#                          "got to the next word.")
-#
-#        if start == "X" or start == "":
-#            if word == "R2":
-#                word = "open"
-#                continue
-#            else:
-#                break
-#        else:
-#            start = int(start)
-#
-#        end = raw_input("Enter end (number of s) of 'R2'")
-#        end = int(end)
-#
-#        limits[word] = (start, end)
 
     # Extract the fft of the words
     R2_fft_extracts = []
