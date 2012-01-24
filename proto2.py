@@ -1,5 +1,5 @@
 import pickle
-from pyshu import snd_record, process_fft, graph_side_to_side, graph_one, FFT_STEP, RATE
+from pyshu import snd_record, process_fft, graph_side_to_side, graph_one, FFT_STEP, RATE, play_array
 from pylab import *
 from sklearn.cluster import KMeans
 from sklearn.svm import SVC
@@ -70,36 +70,48 @@ def center_and_expand(_array, new_length):
 
 SIGNIFIANT_LEAP = int(0.25 * RATE/FFT_STEP)
 
-def detect_word_edges(ambiant_noises_groups, fft_data, offset):
+def detect_word_edges(ambiant_groups, fft_data, offset=0):
     # Other way to detect edges : we should try unsupervised learning with 2
     # groups.
     edges = []
     start = 0
+#    print ambiant_groups
 
     len_data = len(fft_data)
 
-#    logfile = open("logfile", "w")
+    logfile = open("logfile", "w")
     for i in xrange(len_data - SIGNIFIANT_LEAP):
+        group_count = bincount(fft_data[i:i+SIGNIFIANT_LEAP])
         ambiant_count = 0
-        for group in ambiant_noises_groups:
-            group_count = bincount(fft_data[i:i+SIGNIFIANT_LEAP])
+        for group in ambiant_groups:
             if group < len(group_count):
                 ambiant_count += group_count[group]
 
-#        logfile.write("[%d:%d] count: %d\n" % (offset + i,
-#                                               offset + i+SIGNIFIANT_LEAP,
-#                                               ambiant_count))
 
-        if not start and ambiant_count < 0.1 * SIGNIFIANT_LEAP:
+        is_ambiant = ambiant_count > .6 * SIGNIFIANT_LEAP
+
+        logfile.write("[%d:%d], %s, count: %d\n" % (
+            (offset + i) * FFT_STEP,
+            (offset + i + SIGNIFIANT_LEAP) * FFT_STEP,
+            repr(group_count),
+            ambiant_count)
+        )
+
+        if not (start or is_ambiant):
             # This isn't ambiant noise
             # We haven't recorded the start of the word yet
             start = i + offset
-        elif start and ambiant_count > 0.9 * SIGNIFIANT_LEAP:
+        elif start and is_ambiant:
             edges.append((start, i + offset))
             start = 0
-#    logfile.close()
+
+    logfile.close()
 
     return edges
+
+def find_most(data):
+    count = bincount(data)
+    return find(count > (.1 * sum(count)))
 
 
 if __name__ == "__main__":
@@ -110,7 +122,6 @@ if __name__ == "__main__":
 
         fft_ambiant, fft_r2, fft_open = all_ffts
         ambiant_noises, ten_sec_r2, ten_sec_open = all_records
-        print len(ten_sec_r2)
     except:
         all_records = all_recordings()
         all_ffts = all_fft(all_records)
@@ -129,14 +140,14 @@ if __name__ == "__main__":
     len_models_open = int(len(fft_open) * ratio)
 
     # Calculating the values of the groups present in the ambiant noise recording
-    values_to_zero_out = unique(fft_model.labels_[:len_models_ambiant])
+    labels = fft_model.labels_
+    ambiant_groups = find_most(labels[:len_models_ambiant])
 
 #    print unique(fft_model.labels_[:len_models_ambiant])
 #    print bincount(fft_model.labels_[:len_models_ambiant])
 
-    labels = replace(fft_model.labels_, values_to_zero_out)
+#    labels = replace(fft_model.labels_, values_to_zero_out)
 #    graph_side_to_side(concatenate(all_records), labels)
-    graph_one(labels)
 #    graph_one(ten_sec_r2)
 
 #    HARDCODED EDGES
@@ -147,48 +158,32 @@ if __name__ == "__main__":
 
     # R2 edges detection
     r2_edges = detect_word_edges(
-        values_to_zero_out,
+        ambiant_groups,
         labels[len_models_ambiant:len_models_ambiant + len_models_R2],
         offset=len_models_ambiant)
     open_edges = detect_word_edges(
-        values_to_zero_out,
+        ambiant_groups,
         labels[len_models_R2 + len_models_ambiant:
                len_models_R2 + len_models_ambiant + len_models_open],
         offset=len_models_R2+len_models_ambiant)
 
-#    print r2_edges
-#    print limits["R2"]
-#    print open_edges
-#    print limits["open"]
-
     edges = {"R2": r2_edges, "open": open_edges}
-    plt.plot(labels, '|')
-
-#    starts = []
-#    ends = []
-#    for start, end in edges:
-#        starts.append(start)
-#        ends.append(end)
-#
-#    plt.plot(array(starts), r_[[15] * len(edges)], 'gx')
-#    plt.plot(array(ends), r_[[15] * len(edges)], 'rx')
-#    plt.show()
 
     # Extract the fft of the words
     R2_fft_extracts = []
-    for start, end in limits["R2"]:
+    for start, end in edges["R2"]:
         extract = labels[start:end]
         fitting_extract = center_and_expand(extract, 250)
         R2_fft_extracts.append(fitting_extract)
 
     open_fft_extracts = []
-    for start, end in limits["open"]:
+    for start, end in edges["open"]:
         extract = labels[start:end]
         fitting_extract = center_and_expand(extract, 250)
         open_fft_extracts.append(fitting_extract)
 
     # Build a array of the targets ("R2" is 0, "open" is 1)
-    targets = r_[[0] * 7, [1] * 6]
+    targets = r_[[0] * len(R2_fft_extracts), [1] * len(open_fft_extracts)]
 
     # Create new model and fit it with the 'R2' and 'open' occurences
     model = SVC(gamma=0.001)
@@ -201,13 +196,21 @@ if __name__ == "__main__":
     test = record_or_load("test_record.wav", "Say 'open' or 'R2'", length=3)
     test_fft = process_fft(test)
 
-    predictions = [fft_model.predict(one_fft) for one_fft in test_fft]
-
-    predictions = replace(predictions, values_to_zero_out)
+    predictions = array([fft_model.predict(one_fft)[0] for one_fft in test_fft])
 
     #graph_one(predictions)
 
-    centered_test = center_and_expand(predictions[200:325], 250)
-    #graph_one(centered_test)
+    test_edges = detect_word_edges(
+        ambiant_groups,
+        predictions)
+    print test_edges
+    for start, end in test_edges:
+        print start * FFT_STEP, end * FFT_STEP
 
-    print model.predict(centered_test)
+    play_array(test)
+    for start, end in test_edges:
+    #    play_array(test[start * FFT_STEP:end * FFT_STEP])
+
+        centered_test = center_and_expand(predictions[start:start], 250)
+        print model.predict(centered_test)
+    graph_one(test)
