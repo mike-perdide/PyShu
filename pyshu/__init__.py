@@ -37,6 +37,7 @@ def snd_record(chunk=CHUNK, format=FORMAT,
         except IOError, e:
             pass
         samps = np.fromstring(data, dtype=np.int16)
+        print len(samps)
         for samp in samps:
             all_samps.append(samp)
 
@@ -86,3 +87,24 @@ def graph_one(data):
     y = array(data)
     plt.plot(y)
     plt.show()
+
+
+def play_array(snd_data):
+    chunk = 1024
+    print len(snd_data) % chunk
+
+    p = pyaudio.PyAudio()
+
+    # open stream
+    stream = p.open(format = FORMAT,
+                    channels = CHANNELS,
+                    rate = RATE,
+                    output = True)
+
+    # play stream
+    for data in [snd_data[n * chunk:(n+1) * chunk]
+                 for n in xrange(len(snd_data) / chunk)]:
+        stream.write(data)
+
+    stream.close()
+    p.terminate()
